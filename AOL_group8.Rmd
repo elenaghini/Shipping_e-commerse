@@ -1,0 +1,185 @@
+```{r}
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(tidyr)
+library(corrplot)
+library(scales)
+library(skimr)
+library(tidyverse)
+library(RColorBrewer)
+library(datasets)
+library(caTools)
+library(caret)
+Shipping <- read.csv("shipping_ecommerce.csv", header = TRUE, stringsAsFactors = FALSE)
+```
+
+```{r}
+df <- Shipping
+
+#untuk melihat 10 baris pertama
+head(df, n = 10)
+```
+```{r}
+#untuk cek structure
+str(df)
+```
+```{r}
+# Summarize data
+skim(Shipping)
+```
+```{r}
+#Untuk cek missing value
+Check = function(O){
+  temp = sum(is.na(O))
+  return(temp)
+}
+sapply(X = df,FUN = Check)
+```
+```{r}
+#Mencari korelasi
+cor(df[, sapply(df, is.numeric)])
+corrplot(cor(df[, sapply(df, is.numeric)]), method = "color")
+```
+```{r}
+# Determine correlation between variables
+cor(Shipping$Prior_purchases, Shipping$Weight_in_gms)
+#tidak ada korelasi yang signifikan antara prior_purchases dengan weight#Frequency distribution - categorical variable
+```
+
+```{r}
+categorical_vars <- c("Warehouse_block", "Mode_of_Shipment", "Product_importance", "Gender", "Class")
+for (var in categorical_vars) {
+  cat("\nFrequency distribution for", var, ":\n")
+  print(table(Shipping[[var]]))
+}
+```
+
+
+
+
+
+```{r}
+abc <- table(Shipping$Product_importance, Shipping$Class)
+barplot(abc, beside = TRUE, legend.text = TRUE, col = c("#912f3c", "#D6BD68", "#023020"), names.arg = c("Late", "On-time"))
+```
+```{r}
+# Define custom colors for each warehouse block
+custom_colors <- c("A" = "#1E5631", "B" = "#A4DE02", "C" = "#76BA1B", "D" = "#4C9A2A", "E" = "#ACDF87", "F" = "#68BB59")
+
+ggplot(Shipping, aes(x = Warehouse_block, fill = Warehouse_block)) +
+  geom_bar(show.legend = FALSE) +
+  xlab("Block") +
+  scale_fill_manual(values = custom_colors)
+```
+
+```{r}
+abcd <- aggregate(Shipping$Customer_care_calls, by = list(Shipping$Gender), FUN = sum)
+col_names <- c("M", "F")
+colors <- c("M" = "#1F77B4", "F" = "#FF69B4")
+
+ggplot(abcd, aes(x = Group.1, y = x, fill = Group.1)) +
+  geom_col() +
+  scale_fill_manual(values = colors, breaks = col_names, labels = col_names) +
+  xlab("Gender") +
+  ylab("Total Customer Care Calls") +
+  theme_minimal()
+```
+```{r}
+ggplot(Shipping, aes(x = Mode_of_Shipment, fill = Product_importance)) +
+  geom_bar() + xlab("Mode Ship")
+```
+```{r}
+# Boxplot
+boxplot(Shipping$Customer_care_calls, 
+        main = "Boxplot of Customer Care Calls",
+        ylab = "Number of Calls")
+```
+```{r}
+bar1<-table(Shipping$Mode_of_Shipment,Shipping$Warehouse_block)
+barplot(bar1,beside=TRUE, legend.text=TRUE, xlab="Warehouse block", ylab="Quantity",main = "Ways of shipment to ammount of inventory in warehouse", col = 1:3)
+```
+```{r}
+bar2<-table(Shipping$Mode_of_Shipment,Shipping$Prior_purchases)
+barplot(bar2,beside=TRUE, legend.text=TRUE, xlab="Prior purchase", ylab="Quantity",main = "Ammount of prior purchase in ways of shipments", col = 1:3)
+```
+```{r}
+ggplot(Shipping, aes(x = Mode_of_Shipment, y = Weight_in_gms)) +
+  geom_point() +
+  labs(title = "Scatter Plot of Weight vs Cost", x = "Mode Ship", y = "Weight") +
+  theme_minimal()
+```
+```{r}
+ggplot(Shipping, aes(x = Mode_of_Shipment, y = Weight_in_gms, fill = Mode_of_Shipment)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Mode of Shipment", y = "Weight (in gms)", fill = "Mode of Shipment") +
+  ggtitle("Weight Distribution by Mode of Shipment") +
+  theme_minimal() +
+  scale_y_log10(labels = comma)
+```
+
+
+
+
+
+
+
+```{r}
+# Preprocessing Dataset
+Shipping$Warehouse_block <- as.factor(Shipping$Warehouse_block)
+Shipping$Mode_of_Shipment <- as.factor(Shipping$Mode_of_Shipment)
+Shipping$Product_importance <- as.factor(Shipping$Product_importance)
+Shipping$Gender <- as.factor(Shipping$Gender)
+Shipping$Class <- as.factor(Shipping$Class)
+```
+```{r}
+# Split the dataset into Train and test with 70:30 ratio
+set.seed(123)
+split <- sample.split(Shipping$Class, SplitRatio = 0.7)
+training_set <- subset(Shipping, split == TRUE)
+testing_set <- subset(Shipping, split == FALSE)
+
+# Select numeric variables
+numeric_vars <- sapply(training_set, is.numeric)
+numeric_training_set <- training_set[, numeric_vars]
+numeric_testing_set <- testing_set[, numeric_vars]
+numeric_matrix <- as.matrix(numeric_training_set)
+numeric_testing_matrix <- as.matrix(numeric_testing_set)
+```
+```{r}
+# Build the Regresion polynomial logisctic model
+poly_vars <- poly(numeric_matrix, degree = 2, raw = TRUE)
+poly_formula <- as.formula(paste("Class ~ .", paste(names(poly_vars), collapse = "+")))
+model <- train(poly_formula, data = training_set, method = "glm", family = "binomial", trControl = trainControl(method = "cv", number = 5))
+```
+```{r}
+# Do the prediction when testing the Predict set
+predictions <- predict(model, newdata = testing_set)
+```
+```{r}
+# Evaluate Model performance
+confusion_matrix <- confusionMatrix(predictions, testing_set$Class)
+accuracy <- confusion_matrix$overall["Accuracy"]
+```
+```{r}
+# Calculate F1-score
+precision <- confusion_matrix$byClass["Pos Pred Value"]
+recall <- confusion_matrix$byClass["Sensitivity"]
+f1_score <- 2 * (precision * recall) / (precision + recall)
+```
+```{r}
+# Show the Result
+print(confusion_matrix)
+```
+```{r}
+print(paste("Accuracy: ", accuracy))
+print(paste("F1-score: ", f1_score))
+```
+
+
+
+
+
+
+
+
